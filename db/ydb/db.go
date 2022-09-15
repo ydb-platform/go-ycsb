@@ -189,7 +189,7 @@ func (db *ydbDB) BatchRead(ctx context.Context, tableName string, keys []string,
 }
 
 func (db *ydbDB) Scan(ctx context.Context, tableName string, startKey string, count int, columns []string) ([]map[string][]byte, error) {
-	return db.queryRows(ydb.WithQueryMode(ctx, ydb.ScanQueryMode),
+	return db.queryRows(ctx,
 		query.Scan(db.databasePath, tableName, columns),
 		sql.Named("key", startKey),
 		sql.Named("limit", uint64(count)),
