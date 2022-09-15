@@ -1,6 +1,3 @@
 PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
 
-DECLARE $key AS Text;
-DECLARE $limit AS UInt64;
-
 SELECT {{ range $i, $col := .Columns }}{{ if $i }}, {{ end }}`{{ $col }}`{{ else }}*{{ end }} FROM {{ .TableName }} WHERE YCSB_KEY > $key LIMIT $limit;

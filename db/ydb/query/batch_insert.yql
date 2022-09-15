@@ -1,8 +1,3 @@
 PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
 
-UPSERT INTO {{ .TableName }}
-SELECT *
-FROM AS_TABLE($values) AS v
-LEFT JOIN {{ .TableName }} AS t
-ON v.YCSB_KEY = t.YCSB_KEY
-WHERE t.YCSB_KEY IS NULL;
+UPSERT INTO {{ .TableName }} SELECT * FROM AS_TABLE($values) AS v LEFT JOIN {{ .TableName }} AS t ON v.YCSB_KEY = t.YCSB_KEY WHERE t.YCSB_KEY IS NULL;
