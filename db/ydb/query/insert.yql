@@ -1,0 +1,3 @@
+PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
+
+INSERT INTO {{ .TableName }} SELECT * AS_TABLE($values);

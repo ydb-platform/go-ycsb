@@ -1,0 +1,3 @@
+PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
+
+SELECT {{ range $i, $col := .Columns }}{{ if $i }}, {{ end }}`{{ $col }}`{{ else }}*{{ end }} FROM {{ .TableName }} WHERE YCSB_KEY IN $keys;

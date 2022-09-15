@@ -1,0 +1,3 @@
+PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
+
+DELETE FROM {{ .TableName }} WHERE YCSB_KEY IN $keys;

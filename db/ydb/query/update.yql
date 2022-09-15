@@ -1,0 +1,3 @@
+PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
+
+UPDATE {{ .TableName }} ON SELECT * FROM $values;
