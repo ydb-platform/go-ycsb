@@ -1,3 +1,7 @@
 PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
 
+{{ range $_, $declare := .Declares }}
+{{ $declare }};
+{{- end }}
+
 SELECT {{ range $i, $col := .Columns }}{{ if $i }}, {{ end }}`{{ $col }}`{{ else }}*{{ end }} FROM {{ .TableName }} WHERE YCSB_KEY > $key LIMIT $limit;

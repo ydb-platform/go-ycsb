@@ -1,3 +1,7 @@
 PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
 
-INSERT INTO {{ .TableName }} SELECT * AS_TABLE($values);
+{{ range $_, $declare := .Declares }}
+{{ $declare }};
+{{- end }}
+
+INSERT INTO {{ .TableName }} SELECT * FROM AS_TABLE($values);

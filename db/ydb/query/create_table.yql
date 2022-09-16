@@ -1,7 +1,7 @@
 PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
 
 CREATE TABLE {{ .TableName }} (
-    YCSB_KEY Text,
+    YCSB_KEY Text NOT NULL,
 
     {{- range $_, $col := .Columns }}
     `{{ $col }}` Bytes,

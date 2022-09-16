@@ -19,10 +19,10 @@ import (
 	_ "embed"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 
 	"github.com/magiconair/properties"
-	"github.com/ydb-platform/ydb-go-sdk/v3/retry"
 
 	"github.com/pingcap/go-ycsb/db/ydb/query"
 	"github.com/pingcap/go-ycsb/pkg/prop"
@@ -31,6 +31,7 @@ import (
 
 	// ydb package
 	"github.com/ydb-platform/ydb-go-sdk/v3"
+	"github.com/ydb-platform/ydb-go-sdk/v3/retry"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
@@ -121,12 +122,50 @@ func (db *ydbDB) Close() error {
 	return db.db.Close()
 }
 
-func (db *ydbDB) queryRows(ctx context.Context, query string, args ...interface{}) (vs []map[string][]byte, _ error) {
+func (db *ydbDB) Read(ctx context.Context, tableName string, key string, columns []string) (map[string][]byte, error) {
+	rows, err := db.queryRows(ctx, query.Read(db.databasePath, tableName, columns, key))
+
+	if err != nil {
+		return nil, err
+	} else if len(rows) == 0 {
+		return nil, nil
+	}
+
+	return rows[0], nil
+}
+
+func (db *ydbDB) BatchRead(ctx context.Context, tableName string, keys []string, columns []string) ([]map[string][]byte, error) {
+	return db.queryRows(ydb.WithQueryMode(ctx, ydb.ScanQueryMode),
+		query.BatchRead(db.databasePath, tableName, columns, keys),
+	)
+}
+
+func (db *ydbDB) Scan(ctx context.Context, tableName string, startKey string, count int, columns []string) ([]map[string][]byte, error) {
+	return db.queryRows(ydb.WithQueryMode(ctx, ydb.ScanQueryMode),
+		query.Scan(db.databasePath, tableName, columns, startKey, uint64(count)),
+	)
+}
+
+func (db *ydbDB) execQuery(ctx context.Context, request query.Request) (err error) {
 	if db.verbose {
-		fmt.Printf("%s %v\n", query, args)
+		fmt.Printf("%s %v\n", request.Query(), request.Args())
+	}
+	err = retry.Do(ctx, db.db, func(ctx context.Context, cc *sql.Conn) error {
+		_, err = cc.ExecContext(ctx, request.Query(), request.Args()...)
+		return err
+	})
+	if err != nil {
+		log.Println(err)
+	}
+	return err
+}
+
+func (db *ydbDB) queryRows(ctx context.Context, request query.Request) (vs []map[string][]byte, _ error) {
+	if db.verbose {
+		fmt.Printf("%s %v\n", request.Query(), request.Args())
 	}
 	err := retry.Do(ctx, db.db, func(ctx context.Context, cc *sql.Conn) error {
-		rows, err := cc.QueryContext(ctx, query, args...)
+		rows, err := cc.QueryContext(ctx, request.Query(), request.Args()...)
 		if err != nil {
 			return err
 		}
@@ -166,79 +205,45 @@ func (db *ydbDB) queryRows(ctx context.Context, query string, args ...interface{
 	return vs, err
 }
 
-func (db *ydbDB) Read(ctx context.Context, tableName string, key string, columns []string) (map[string][]byte, error) {
-	rows, err := db.queryRows(ctx,
-		query.Read(db.databasePath, tableName, columns),
-		sql.Named("key", key),
-	)
-
-	if err != nil {
-		return nil, err
-	} else if len(rows) == 0 {
-		return nil, nil
-	}
-
-	return rows[0], nil
-}
-
-func (db *ydbDB) BatchRead(ctx context.Context, tableName string, keys []string, columns []string) ([]map[string][]byte, error) {
-	return db.queryRows(ctx,
-		query.BatchRead(db.databasePath, tableName, columns),
-		sql.Named("keys", keys),
-	)
-}
-
-func (db *ydbDB) Scan(ctx context.Context, tableName string, startKey string, count int, columns []string) ([]map[string][]byte, error) {
-	return db.queryRows(ctx,
-		query.Scan(db.databasePath, tableName, columns),
-		sql.Named("key", startKey),
-		sql.Named("limit", uint64(count)),
-	)
-}
-
-func (db *ydbDB) execQuery(ctx context.Context, query string, args ...interface{}) (err error) {
-	if db.verbose {
-		fmt.Printf("%s %v\n", query, args)
-	}
-	err = retry.Do(ctx, db.db, func(ctx context.Context, cc *sql.Conn) error {
-		_, err = cc.ExecContext(ctx, query, args...)
-		return err
-	})
-	if err != nil {
-		if err != nil {
-			log.Println(err)
-		}
-	}
-	return err
-}
-
 func (db *ydbDB) Update(ctx context.Context, tableName string, key string, row map[string][]byte) error {
 	fields := make([]types.StructValueOption, 0, len(row)+1)
 	fields = append(fields, types.StructFieldValue("YCSB_KEY", types.TextValue(key)))
 	for field, value := range row {
 		fields = append(fields, types.StructFieldValue(strings.ToUpper(field), types.BytesValue(value)))
 	}
-	return db.execQuery(ctx,
-		query.Update(db.databasePath, tableName),
-		sql.Named("values", types.ListValue(types.StructValue(fields...))),
-	)
+	return db.execQuery(ctx, query.Update(db.databasePath, tableName, types.ListValue(types.StructValue(fields...))))
 }
 
 func (db *ydbDB) BatchUpdate(ctx context.Context, tableName string, keys []string, values []map[string][]byte) error {
+	columns := make(map[string]struct{}, 0)
+	for _, kv := range values {
+		for k, v := range kv {
+			delete(kv, k)
+			k = strings.ToUpper(k)
+			kv[k] = v
+			columns[k] = struct{}{}
+		}
+	}
+	cols := make([]string, 0, len(columns))
+	for k := range columns {
+		cols = append(cols, k)
+	}
+	sort.Strings(cols)
 	ydbRows := make([]types.Value, 0, len(values))
 	for i, key := range keys {
 		row := values[i]
-		fields := make([]types.StructValueOption, 0, len(row)+1)
+		fields := make([]types.StructValueOption, 0, len(cols)+1)
 		fields = append(fields, types.StructFieldValue("YCSB_KEY", types.TextValue(key)))
-		for field, value := range row {
-			fields = append(fields, types.StructFieldValue(strings.ToUpper(field), types.BytesValue(value)))
+		for _, column := range cols {
+			if value, has := row[column]; has {
+				fields = append(fields, types.StructFieldValue(column, types.NullableBytesValue(&value)))
+			} else {
+				fields = append(fields, types.StructFieldValue(column, types.NullableBytesValue(nil)))
+			}
 		}
 		ydbRows = append(ydbRows, types.StructValue(fields...))
 	}
-	return db.execQuery(ctx,
-		query.BatchUpdate(db.databasePath, tableName),
-		sql.Named("values", types.ListValue(ydbRows...)),
-	)
+	return db.execQuery(ctx, query.BatchUpdate(db.databasePath, tableName, types.ListValue(ydbRows...)))
 }
 
 func (db *ydbDB) Insert(ctx context.Context, tableName string, key string, row map[string][]byte) error {
@@ -247,41 +252,47 @@ func (db *ydbDB) Insert(ctx context.Context, tableName string, key string, row m
 	for field, value := range row {
 		fields = append(fields, types.StructFieldValue(strings.ToUpper(field), types.BytesValue(value)))
 	}
-	return db.execQuery(ctx,
-		query.Insert(db.databasePath, tableName),
-		sql.Named("values", types.ListValue(types.StructValue(fields...))),
-	)
+	return db.execQuery(ctx, query.Insert(db.databasePath, tableName, types.ListValue(types.StructValue(fields...))))
 }
 
 func (db *ydbDB) BatchInsert(ctx context.Context, tableName string, keys []string, values []map[string][]byte) error {
+	columns := make(map[string]struct{}, 0)
+	for _, kv := range values {
+		for k, v := range kv {
+			delete(kv, k)
+			k = strings.ToUpper(k)
+			kv[k] = v
+			columns[k] = struct{}{}
+		}
+	}
+	cols := make([]string, 0, len(columns))
+	for k := range columns {
+		cols = append(cols, k)
+	}
+	sort.Strings(cols)
 	ydbRows := make([]types.Value, 0, len(values))
 	for i, key := range keys {
 		row := values[i]
-		fields := make([]types.StructValueOption, 0, len(row)+1)
+		fields := make([]types.StructValueOption, 0, len(cols)+1)
 		fields = append(fields, types.StructFieldValue("YCSB_KEY", types.TextValue(key)))
-		for field, value := range row {
-			fields = append(fields, types.StructFieldValue(strings.ToUpper(field), types.BytesValue(value)))
+		for _, column := range cols {
+			if value, has := row[column]; has {
+				fields = append(fields, types.StructFieldValue(column, types.NullableBytesValue(&value)))
+			} else {
+				fields = append(fields, types.StructFieldValue(column, types.NullableBytesValue(nil)))
+			}
 		}
 		ydbRows = append(ydbRows, types.StructValue(fields...))
 	}
-	return db.execQuery(ctx,
-		query.BatchInsert(db.databasePath, tableName),
-		sql.Named("values", types.ListValue(ydbRows...)),
-	)
+	return db.execQuery(ctx, query.BatchInsert(db.databasePath, tableName, types.ListValue(ydbRows...)))
 }
 
 func (db *ydbDB) Delete(ctx context.Context, tableName string, key string) error {
-	return db.execQuery(ctx,
-		query.Delete(db.databasePath, tableName),
-		sql.Named("key", types.TextValue(key)),
-	)
+	return db.execQuery(ctx, query.Delete(db.databasePath, tableName, key))
 }
 
 func (db *ydbDB) BatchDelete(ctx context.Context, tableName string, keys []string) error {
-	return db.execQuery(ctx,
-		query.BatchDelete(db.databasePath, tableName),
-		sql.Named("keys", keys),
-	)
+	return db.execQuery(ctx, query.BatchDelete(db.databasePath, tableName, keys))
 }
 
 func init() {

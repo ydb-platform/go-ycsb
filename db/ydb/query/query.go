@@ -2,11 +2,16 @@ package query
 
 import (
 	"bytes"
+	"database/sql"
 	_ "embed"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 	"text/template"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/sugar"
+	"github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
 var (
@@ -82,13 +87,21 @@ func init() {
 type commonData struct {
 	TablePathPrefix string
 	TableName       string
+	Declares        []string
 }
 
-func Update(tablePathPrefix, tableName string) string {
-	return render(updateQuery, commonData{
-		TablePathPrefix: tablePathPrefix,
-		TableName:       tableName,
-	})
+func Update(tablePathPrefix, tableName string, values types.Value) Request {
+	args := []sql.NamedArg{
+		sql.Named("values", values),
+	}
+	return request{
+		query: render(updateQuery, commonData{
+			TablePathPrefix: tablePathPrefix,
+			TableName:       tableName,
+			Declares:        asDeclares(args),
+		}),
+		args: asInterfaces(args),
+	}
 }
 
 func toUpper(ss []string) []string {
@@ -98,79 +111,151 @@ func toUpper(ss []string) []string {
 	return ss
 }
 
-func Scan(tablePathPrefix, tableName string, columns []string) string {
+func Scan(tablePathPrefix, tableName string, columns []string, key string, limit uint64) Request {
 	sort.Strings(columns)
-	return render(scanQuery, commonDataWithColumns{
-		commonData{
+	args := []sql.NamedArg{
+		sql.Named("key", key),
+		sql.Named("limit", limit),
+	}
+	return request{
+		query: render(scanQuery, commonDataWithColumns{
+			commonData{
+				TablePathPrefix: tablePathPrefix,
+				TableName:       tableName,
+				Declares:        asDeclares(args),
+			},
+			toUpper(columns),
+		}),
+		args: asInterfaces(args),
+	}
+}
+
+func BatchRead(tablePathPrefix, tableName string, columns []string, keys []string) Request {
+	sort.Strings(columns)
+	args := []sql.NamedArg{
+		sql.Named("keys", keys),
+	}
+	return request{
+		query: render(batchReadQuery, commonDataWithColumns{
+			commonData{
+				TablePathPrefix: tablePathPrefix,
+				TableName:       tableName,
+				Declares:        asDeclares(args),
+			},
+			toUpper(columns),
+		}),
+		args: asInterfaces(args),
+	}
+}
+
+func Read(tablePathPrefix, tableName string, columns []string, key string) Request {
+	sort.Strings(columns)
+	args := []sql.NamedArg{
+		sql.Named("key", key),
+	}
+	return request{
+		query: render(readQuery, commonDataWithColumns{
+			commonData{
+				TablePathPrefix: tablePathPrefix,
+				TableName:       tableName,
+				Declares:        asDeclares(args),
+			},
+			toUpper(columns),
+		}),
+		args: asInterfaces(args),
+	}
+}
+
+func BatchUpdate(tablePathPrefix, tableName string, values types.Value) Request {
+	args := []sql.NamedArg{
+		sql.Named("values", values),
+	}
+	return request{
+		query: render(batchUpdateQuery, commonData{
 			TablePathPrefix: tablePathPrefix,
 			TableName:       tableName,
-		},
-		toUpper(columns),
-	})
+			Declares:        asDeclares(args),
+		}),
+		args: asInterfaces(args),
+	}
 }
 
-func BatchRead(tablePathPrefix, tableName string, columns []string) string {
-	sort.Strings(columns)
-	return render(batchReadQuery, commonDataWithColumns{
-		commonData{
+func BatchInsert(tablePathPrefix, tableName string, values types.Value) Request {
+	args := []sql.NamedArg{
+		sql.Named("values", values),
+	}
+	return request{
+		query: render(batchInsertQuery, commonData{
 			TablePathPrefix: tablePathPrefix,
 			TableName:       tableName,
-		},
-		toUpper(columns),
-	})
+			Declares:        asDeclares(args),
+		}),
+		args: asInterfaces(args),
+	}
 }
 
-func Read(tablePathPrefix, tableName string, columns []string) string {
-	sort.Strings(columns)
-	return render(readQuery, commonDataWithColumns{
-		commonData{
+func Insert(tablePathPrefix, tableName string, values types.Value) Request {
+	args := []sql.NamedArg{
+		sql.Named("values", values),
+	}
+	return request{
+		query: render(insertQuery, commonData{
 			TablePathPrefix: tablePathPrefix,
 			TableName:       tableName,
-		},
-		toUpper(columns),
-	})
+			Declares:        asDeclares(args),
+		}),
+		args: asInterfaces(args),
+	}
 }
 
-func BatchUpdate(tablePathPrefix, tableName string) string {
-	return render(batchUpdateQuery, commonData{
-		TablePathPrefix: tablePathPrefix,
-		TableName:       tableName,
-	})
+func BatchDelete(tablePathPrefix, tableName string, keys []string) Request {
+	args := []sql.NamedArg{
+		sql.Named("keys", keys),
+	}
+	return request{
+		query: render(batchDeleteQuery, commonData{
+			TablePathPrefix: tablePathPrefix,
+			TableName:       tableName,
+			Declares:        asDeclares(args),
+		}),
+		args: asInterfaces(args),
+	}
 }
 
-func BatchInsert(tablePathPrefix, tableName string) string {
-	return render(batchInsertQuery, commonData{
-		TablePathPrefix: tablePathPrefix,
-		TableName:       tableName,
-	})
+func asDeclares(args []sql.NamedArg) (declares []string) {
+	declares = make([]string, len(args))
+	for i, arg := range args {
+		param, err := sugar.ToYdbParam(arg)
+		if err != nil {
+			panic(err)
+		}
+		declares[i] = fmt.Sprintf("DECLARE %s AS %s", param.Name(), param.Value().Type().String())
+	}
+	sort.Strings(declares)
+	return declares
 }
 
-func Insert(tablePathPrefix, tableName string) string {
-	return render(insertQuery, commonData{
-		TablePathPrefix: tablePathPrefix,
-		TableName:       tableName,
-	})
+func Delete(tablePathPrefix, tableName string, key string) Request {
+	args := []sql.NamedArg{
+		sql.Named("key", key),
+	}
+	return request{
+		query: render(deleteQuery, commonData{
+			TablePathPrefix: tablePathPrefix,
+			TableName:       tableName,
+			Declares:        asDeclares(args),
+		}),
+		args: asInterfaces(args),
+	}
 }
 
-func BatchDelete(tablePathPrefix, tableName string) string {
-	return render(batchDeleteQuery, commonData{
-		TablePathPrefix: tablePathPrefix,
-		TableName:       tableName,
-	})
-}
-
-func Delete(tablePathPrefix, tableName string) string {
-	return render(deleteQuery, commonData{
-		TablePathPrefix: tablePathPrefix,
-		TableName:       tableName,
-	})
-}
-
-func DropTable(tablePathPrefix, tableName string) string {
-	return render(dropTableQuery, commonData{
-		TablePathPrefix: tablePathPrefix,
-		TableName:       tableName,
-	})
+func DropTable(tablePathPrefix, tableName string) Request {
+	return request{
+		query: render(dropTableQuery, commonData{
+			TablePathPrefix: tablePathPrefix,
+			TableName:       tableName,
+		}),
+	}
 }
 
 type commonDataWithColumns struct {
@@ -178,16 +263,46 @@ type commonDataWithColumns struct {
 	Columns []string
 }
 
-func CreateTable(tablePathPrefix, tableName string, fieldsCount int) string {
+func CreateTable(tablePathPrefix, tableName string, fieldsCount int) Request {
 	columns := make([]string, fieldsCount)
 	for i := 0; i < fieldsCount; i++ {
 		columns[i] = "FIELD" + strconv.Itoa(i)
 	}
-	return render(createTableQuery, commonDataWithColumns{
-		commonData{
-			TablePathPrefix: tablePathPrefix,
-			TableName:       tableName,
-		},
-		columns,
-	})
+	return request{
+		query: render(createTableQuery, commonDataWithColumns{
+			commonData{
+				TablePathPrefix: tablePathPrefix,
+				TableName:       tableName,
+			},
+			columns,
+		}),
+	}
+}
+
+type request struct {
+	query string
+	args  []interface{}
+}
+
+func (r request) Query() string {
+	return r.query
+}
+
+func (r request) Args() []interface{} {
+	return r.args
+}
+
+var _ Request = &request{}
+
+type Request interface {
+	Query() string
+	Args() []interface{}
+}
+
+func asInterfaces(in []sql.NamedArg) (out []interface{}) {
+	out = make([]interface{}, len(in))
+	for i := range in {
+		out[i] = in[i]
+	}
+	return out
 }

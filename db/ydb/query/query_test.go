@@ -4,12 +4,14 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
 
-func splitAndSimplify(s string) []string {
-	ss := strings.Split(s, "\n")
+func splitAndSimplify(request Request) []string {
+	ss := strings.Split(request.Query(), "\n")
 	n := 0
-	for _, s = range ss {
+	for _, s := range ss {
 		s = strings.TrimSpace(s)
 		if len(s) > 0 {
 			ss[n] = s
@@ -33,6 +35,8 @@ func TestScan(t *testing.T) {
 			columns:         nil,
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
+				"DECLARE $key AS Utf8;",
+				"DECLARE $limit AS Uint64;",
 				"SELECT * FROM ycsbtable WHERE YCSB_KEY > $key LIMIT $limit;",
 			},
 		},
@@ -49,12 +53,14 @@ func TestScan(t *testing.T) {
 			},
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
+				"DECLARE $key AS Utf8;",
+				"DECLARE $limit AS Uint64;",
 				"SELECT `COL0`, `COL1`, `COL2`, `COL3`, `COL4`, `COL5` FROM ycsbtable WHERE YCSB_KEY > $key LIMIT $limit;",
 			},
 		},
 	} {
 		t.Run("", func(t *testing.T) {
-			got := splitAndSimplify(Scan(tt.tablePathPrefix, tt.tableName, tt.columns))
+			got := splitAndSimplify(Scan(tt.tablePathPrefix, tt.tableName, tt.columns, "", 5))
 			if !reflect.DeepEqual(got, tt.exp) {
 				t.Errorf("got:\n\n`%v`\n\nwant:\n\n`%v`", got, tt.exp)
 			}
@@ -73,12 +79,13 @@ func TestBatchDelete(t *testing.T) {
 			tableName:       "ycsbtable",
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
+				"DECLARE $keys AS List<Utf8>;",
 				"DELETE FROM ycsbtable WHERE YCSB_KEY IN $keys;",
 			},
 		},
 	} {
 		t.Run("", func(t *testing.T) {
-			got := splitAndSimplify(BatchDelete(tt.tablePathPrefix, tt.tableName))
+			got := splitAndSimplify(BatchDelete(tt.tablePathPrefix, tt.tableName, []string{""}))
 			if !reflect.DeepEqual(got, tt.exp) {
 				t.Errorf("got:\n\n`%v`\n\nwant:\n\n`%v`", got, tt.exp)
 			}
@@ -97,12 +104,18 @@ func TestBatchInsert(t *testing.T) {
 			tableName:       "ycsbtable",
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
-				"UPSERT INTO ycsbtable SELECT * FROM AS_TABLE($values) AS v LEFT JOIN ycsbtable AS t ON v.YCSB_KEY = t.YCSB_KEY WHERE t.YCSB_KEY IS NULL;",
+				"DECLARE $values AS List<Struct<key:Utf8,value:Uint64>>;",
+				"UPSERT INTO ycsbtable SELECT * FROM AS_TABLE($values);",
 			},
 		},
 	} {
 		t.Run("", func(t *testing.T) {
-			got := splitAndSimplify(BatchInsert(tt.tablePathPrefix, tt.tableName))
+			got := splitAndSimplify(BatchInsert(tt.tablePathPrefix, tt.tableName, types.ListValue(
+				types.StructValue(
+					types.StructFieldValue("key", types.TextValue("")),
+					types.StructFieldValue("value", types.Uint64Value(0)),
+				),
+			)))
 			if !reflect.DeepEqual(got, tt.exp) {
 				t.Errorf("got:\n\n`%v`\n\nwant:\n\n`%v`", got, tt.exp)
 			}
@@ -123,6 +136,7 @@ func TestBatchRead(t *testing.T) {
 			columns:         nil,
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
+				"DECLARE $keys AS List<Utf8>;",
 				"SELECT * FROM ycsbtable WHERE YCSB_KEY IN $keys;",
 			},
 		},
@@ -139,12 +153,13 @@ func TestBatchRead(t *testing.T) {
 			},
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
+				"DECLARE $keys AS List<Utf8>;",
 				"SELECT `COL0`, `COL1`, `COL2`, `COL3`, `COL4`, `COL5` FROM ycsbtable WHERE YCSB_KEY IN $keys;",
 			},
 		},
 	} {
 		t.Run("", func(t *testing.T) {
-			got := splitAndSimplify(BatchRead(tt.tablePathPrefix, tt.tableName, tt.columns))
+			got := splitAndSimplify(BatchRead(tt.tablePathPrefix, tt.tableName, tt.columns, []string{""}))
 			if !reflect.DeepEqual(got, tt.exp) {
 				t.Errorf("got:\n\n`%v`\n\nwant:\n\n`%v`", got, tt.exp)
 			}
@@ -163,12 +178,18 @@ func TestBatchUpdate(t *testing.T) {
 			tableName:       "ycsbtable",
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
-				"UPDATE ycsbtable ON SELECT * AS_TABLE($values);",
+				"DECLARE $values AS List<Struct<key:Utf8,value:Uint64>>;",
+				"UPDATE ycsbtable ON SELECT * FROM AS_TABLE($values);",
 			},
 		},
 	} {
 		t.Run("", func(t *testing.T) {
-			got := splitAndSimplify(BatchUpdate(tt.tablePathPrefix, tt.tableName))
+			got := splitAndSimplify(BatchUpdate(tt.tablePathPrefix, tt.tableName, types.ListValue(
+				types.StructValue(
+					types.StructFieldValue("key", types.TextValue("")),
+					types.StructFieldValue("value", types.Uint64Value(0)),
+				),
+			)))
 			if !reflect.DeepEqual(got, tt.exp) {
 				t.Errorf("got:\n\n`%v`\n\nwant:\n\n`%v`", got, tt.exp)
 			}
@@ -190,7 +211,7 @@ func TestCreateTable(t *testing.T) {
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"CREATE TABLE ycsbtable (",
-				"YCSB_KEY Text,",
+				"YCSB_KEY Text NOT NULL,",
 				"PRIMARY KEY (YCSB_KEY)",
 				");",
 			},
@@ -202,7 +223,7 @@ func TestCreateTable(t *testing.T) {
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"CREATE TABLE ycsbtable (",
-				"YCSB_KEY Text,",
+				"YCSB_KEY Text NOT NULL,",
 				"`FIELD0` Bytes,",
 				"`FIELD1` Bytes,",
 				"PRIMARY KEY (YCSB_KEY)",
@@ -216,7 +237,7 @@ func TestCreateTable(t *testing.T) {
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"CREATE TABLE ycsbtable (",
-				"YCSB_KEY Text,",
+				"YCSB_KEY Text NOT NULL,",
 				"`FIELD0` Bytes,",
 				"`FIELD1` Bytes,",
 				"`FIELD2` Bytes,",
@@ -247,12 +268,13 @@ func TestDelete(t *testing.T) {
 			tableName:       "ycsbtable",
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
+				"DECLARE $key AS Utf8;",
 				"DELETE FROM ycsbtable WHERE YCSB_KEY = $key;",
 			},
 		},
 	} {
 		t.Run("", func(t *testing.T) {
-			got := splitAndSimplify(Delete(tt.tablePathPrefix, tt.tableName))
+			got := splitAndSimplify(Delete(tt.tablePathPrefix, tt.tableName, ""))
 			if !reflect.DeepEqual(got, tt.exp) {
 				t.Errorf("got:\n\n`%v`\n\nwant:\n\n`%v`", got, tt.exp)
 			}
@@ -295,12 +317,18 @@ func TestInsert(t *testing.T) {
 			tableName:       "ycsbtable",
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
-				"INSERT INTO ycsbtable SELECT * AS_TABLE($values);",
+				"DECLARE $values AS List<Struct<key:Utf8,value:Uint64>>;",
+				"INSERT INTO ycsbtable SELECT * FROM AS_TABLE($values);",
 			},
 		},
 	} {
 		t.Run("", func(t *testing.T) {
-			got := splitAndSimplify(Insert(tt.tablePathPrefix, tt.tableName))
+			got := splitAndSimplify(Insert(tt.tablePathPrefix, tt.tableName, types.ListValue(
+				types.StructValue(
+					types.StructFieldValue("key", types.TextValue("")),
+					types.StructFieldValue("value", types.Uint64Value(0)),
+				),
+			)))
 			if !reflect.DeepEqual(got, tt.exp) {
 				t.Errorf("got:\n\n`%v`\n\nwant:\n\n`%v`", got, tt.exp)
 			}
@@ -321,6 +349,7 @@ func TestRead(t *testing.T) {
 			columns:         nil,
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
+				"DECLARE $key AS Utf8;",
 				"SELECT * FROM ycsbtable WHERE YCSB_KEY = $key;",
 			},
 		},
@@ -337,12 +366,13 @@ func TestRead(t *testing.T) {
 			},
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
+				"DECLARE $key AS Utf8;",
 				"SELECT `COL0`, `COL1`, `COL2`, `COL3`, `COL4`, `COL5` FROM ycsbtable WHERE YCSB_KEY = $key;",
 			},
 		},
 	} {
 		t.Run("", func(t *testing.T) {
-			got := splitAndSimplify(Read(tt.tablePathPrefix, tt.tableName, tt.columns))
+			got := splitAndSimplify(Read(tt.tablePathPrefix, tt.tableName, tt.columns, ""))
 			if !reflect.DeepEqual(got, tt.exp) {
 				t.Errorf("got:\n\n`%v`\n\nwant:\n\n`%v`", got, tt.exp)
 			}
@@ -361,12 +391,18 @@ func TestUpdate(t *testing.T) {
 			tableName:       "ycsbtable",
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
-				"UPDATE ycsbtable ON SELECT * FROM $values;",
+				"DECLARE $values AS List<Struct<key:Utf8,value:Uint64>>;",
+				"UPSERT INTO ycsbtable SELECT * FROM AS_TABLE($values);",
 			},
 		},
 	} {
 		t.Run("", func(t *testing.T) {
-			got := splitAndSimplify(Update(tt.tablePathPrefix, tt.tableName))
+			got := splitAndSimplify(Update(tt.tablePathPrefix, tt.tableName, types.ListValue(
+				types.StructValue(
+					types.StructFieldValue("key", types.TextValue("")),
+					types.StructFieldValue("value", types.Uint64Value(0)),
+				),
+			)))
 			if !reflect.DeepEqual(got, tt.exp) {
 				t.Errorf("got:\n\n`%v`\n\nwant:\n\n`%v`", got, tt.exp)
 			}

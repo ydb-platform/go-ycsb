@@ -1,3 +1,7 @@
 PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
 
-UPDATE {{ .TableName }} ON SELECT * FROM $values;
+{{ range $_, $declare := .Declares }}
+{{ $declare }};
+{{- end }}
+
+UPSERT INTO {{ .TableName }} SELECT * FROM AS_TABLE($values);
