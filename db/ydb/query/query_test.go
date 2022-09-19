@@ -1,6 +1,7 @@
 package query
 
 import (
+	"database/sql"
 	"reflect"
 	"strings"
 	"testing"
@@ -405,6 +406,118 @@ func TestUpdate(t *testing.T) {
 			)))
 			if !reflect.DeepEqual(got, tt.exp) {
 				t.Errorf("got:\n\n`%v`\n\nwant:\n\n`%v`", got, tt.exp)
+			}
+		})
+	}
+}
+
+func Test_renderMemo(t *testing.T) {
+	for _, tt := range []struct {
+		query     string
+		data      any
+		fromCache bool
+	}{
+		{
+			query: batchUpdateQuery,
+			data: commonData{
+				TablePathPrefix: "/local",
+				TableName:       "usertable",
+				Declares: asDeclares([]sql.NamedArg{
+					sql.Named("values", types.ListValue(
+						types.StructValue(
+							types.StructFieldValue("key", types.TextValue("")),
+							types.StructFieldValue("value", types.Uint64Value(0)),
+						),
+					)),
+				}),
+			},
+			fromCache: false,
+		},
+		{
+			query: batchDeleteQuery,
+			data: commonData{
+				TablePathPrefix: "/local",
+				TableName:       "usertable",
+				Declares: asDeclares([]sql.NamedArg{
+					sql.Named("values", types.ListValue(
+						types.StructValue(
+							types.StructFieldValue("key", types.TextValue("")),
+							types.StructFieldValue("value", types.Uint64Value(0)),
+						),
+					)),
+				}),
+			},
+			fromCache: false,
+		},
+		{
+			query: batchUpdateQuery,
+			data: commonData{
+				TablePathPrefix: "/local",
+				TableName:       "usertable",
+				Declares: asDeclares([]sql.NamedArg{
+					sql.Named("values", types.ListValue(
+						types.StructValue(
+							types.StructFieldValue("key", types.TextValue("")),
+							types.StructFieldValue("value", types.Uint64Value(0)),
+						),
+					)),
+				}),
+			},
+			fromCache: true,
+		},
+		{
+			query: batchDeleteQuery,
+			data: commonData{
+				TablePathPrefix: "/local",
+				TableName:       "usertable",
+				Declares: asDeclares([]sql.NamedArg{
+					sql.Named("values", types.ListValue(
+						types.StructValue(
+							types.StructFieldValue("key", types.TextValue("")),
+							types.StructFieldValue("value", types.Uint64Value(0)),
+						),
+					)),
+				}),
+			},
+			fromCache: true,
+		},
+		{
+			query: batchDeleteQuery,
+			data: commonData{
+				TablePathPrefix: "/local",
+				TableName:       "usertable",
+				Declares: asDeclares([]sql.NamedArg{
+					sql.Named("values", types.ListValue(
+						types.StructValue(
+							types.StructFieldValue("key", types.TextValue("123")),
+							types.StructFieldValue("value", types.Uint64Value(123)),
+						),
+					)),
+				}),
+			},
+			fromCache: true,
+		},
+		{
+			query: batchDeleteQuery,
+			data: commonData{
+				TablePathPrefix: "/local",
+				TableName:       "usertable",
+				Declares: asDeclares([]sql.NamedArg{
+					sql.Named("values", types.ListValue(
+						types.StructValue(
+							types.StructFieldValue("key", types.BytesValueFromString("123")),
+							types.StructFieldValue("value", types.Uint64Value(123)),
+						),
+					)),
+				}),
+			},
+			fromCache: false,
+		},
+	} {
+		t.Run("", func(t *testing.T) {
+			_, fromCache := renderMemo(tt.query, tt.data)
+			if fromCache != tt.fromCache {
+				t.Errorf("got: %v, want: %v", fromCache, tt.fromCache)
 			}
 		})
 	}

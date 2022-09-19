@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 
 	"github.com/ydb-platform/ydb-go-sdk/v3/sugar"
@@ -16,15 +17,36 @@ import (
 
 var (
 	queryTemplate *template.Template
+	queryCache    sync.Map
 )
 
-func render(query string, data interface{}) string {
+type cacheKey struct {
+	query string
+	data  any
+}
+
+func renderMemo(query string, data interface{}) (s string, fromCache bool) {
+	key := fmt.Sprintf("%+v", cacheKey{
+		query: query,
+		data:  data,
+	})
+	if v, ok := queryCache.Load(key); ok {
+		return v.(string), true
+	}
+	defer func() {
+		queryCache.Store(key, s)
+	}()
 	var buf bytes.Buffer
 	err := queryTemplate.ExecuteTemplate(&buf, query, data)
 	if err != nil {
 		panic(err)
 	}
-	return buf.String()
+	return buf.String(), false
+}
+
+func render(query string, data interface{}) string {
+	s, _ := renderMemo(query, data)
+	return s
 }
 
 var (
