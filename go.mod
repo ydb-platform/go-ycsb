@@ -32,6 +32,7 @@ require (
 	github.com/spf13/cobra v1.0.0
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c
 	github.com/tikv/client-go/v2 v2.0.1-0.20220720064224-aa9ded37d17d
+	github.com/ydb-platform/ydb-go-sdk/v3 v3.38.1
 	go.mongodb.org/mongo-driver v1.5.1
 	google.golang.org/api v0.87.0
 	google.golang.org/genproto v0.0.0-20220718134204-073382fd740c
@@ -118,8 +119,7 @@ require (
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.0.2 // indirect
 	github.com/xdg-go/stringprep v1.0.2 // indirect
-	github.com/ydb-platform/ydb-go-genproto v0.0.0-20220801095836-cf975531fd1f // indirect
-	github.com/ydb-platform/ydb-go-sdk/v3 v3.37.7 // indirect
+	github.com/ydb-platform/ydb-go-genproto v0.0.0-20220916101045-1c4d1accabb6 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20181117223130-1be2e3e5546d // indirect
 	github.com/yuin/gopher-lua v0.0.0-20181031023651-12c4817b42c5 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.2 // indirect
@@ -144,7 +144,5 @@ require (
 )
 
 replace github.com/apache/thrift => github.com/apache/thrift v0.0.0-20171203172758-327ebb6c2b6d
-
-replace github.com/ydb-platform/ydb-go-sdk/v3 => ../ydb/sdk
 
 go 1.18
