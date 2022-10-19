@@ -4,4 +4,4 @@ PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
 {{ $declare }};
 {{- end }}
 
-INSERT INTO {{ .TableName }} SELECT * FROM AS_TABLE($values);
+UPSERT INTO {{ .TableName }} SELECT * FROM AS_TABLE($values);
