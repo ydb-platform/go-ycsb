@@ -110,6 +110,7 @@ type commonData struct {
 	TablePathPrefix string
 	TableName       string
 	Declares        []string
+	Operation       string
 }
 
 func Update(tablePathPrefix, tableName string, values types.Value) Request {
@@ -211,6 +212,22 @@ func BatchInsert(tablePathPrefix, tableName string, values types.Value) Request 
 			TablePathPrefix: tablePathPrefix,
 			TableName:       tableName,
 			Declares:        asDeclares(args),
+			Operation:       "INSERT",
+		}),
+		args: asInterfaces(args),
+	}
+}
+
+func BatchUpsert(tablePathPrefix, tableName string, values types.Value) Request {
+	args := []sql.NamedArg{
+		sql.Named("values", values),
+	}
+	return request{
+		query: render(batchInsertQuery, commonData{
+			TablePathPrefix: tablePathPrefix,
+			TableName:       tableName,
+			Declares:        asDeclares(args),
+			Operation:       "UPSERT",
 		}),
 		args: asInterfaces(args),
 	}
@@ -225,6 +242,22 @@ func Insert(tablePathPrefix, tableName string, values types.Value) Request {
 			TablePathPrefix: tablePathPrefix,
 			TableName:       tableName,
 			Declares:        asDeclares(args),
+			Operation:       "INSERT",
+		}),
+		args: asInterfaces(args),
+	}
+}
+
+func Upsert(tablePathPrefix, tableName string, values types.Value) Request {
+	args := []sql.NamedArg{
+		sql.Named("values", values),
+	}
+	return request{
+		query: render(insertQuery, commonData{
+			TablePathPrefix: tablePathPrefix,
+			TableName:       tableName,
+			Declares:        asDeclares(args),
+			Operation:       "UPSERT",
 		}),
 		args: asInterfaces(args),
 	}

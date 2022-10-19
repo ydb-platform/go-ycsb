@@ -39,6 +39,7 @@ import (
 const (
 	ydbDSN     = "ydb.dsn"
 	ydbExplain = "ydb.explain"
+	ydbForce   = "ydb.force"
 )
 
 type ydbCreator struct {
@@ -49,6 +50,7 @@ type ydbDB struct {
 	db      *sql.DB
 	verbose bool
 	explain bool
+	force   bool
 
 	databasePath string
 
@@ -96,6 +98,7 @@ func (c ydbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 	}
 
 	d.explain = p.GetBool(ydbExplain, false)
+	d.force = p.GetBool(ydbForce, true)
 
 	return d, nil
 }
@@ -274,7 +277,13 @@ func (db *ydbDB) Insert(ctx context.Context, tableName string, key string, row m
 	for field, value := range row {
 		fields = append(fields, types.StructFieldValue(strings.ToUpper(field), types.BytesValue(value)))
 	}
-	return db.execQuery(ctx, query.Insert(db.databasePath, tableName, types.ListValue(types.StructValue(fields...))))
+	var request query.Request
+	if db.force {
+		request = query.Upsert(db.databasePath, tableName, types.ListValue(types.StructValue(fields...)))
+	} else {
+		request = query.Insert(db.databasePath, tableName, types.ListValue(types.StructValue(fields...)))
+	}
+	return db.execQuery(ctx, request)
 }
 
 func (db *ydbDB) BatchInsert(ctx context.Context, tableName string, keys []string, values []map[string][]byte) error {
@@ -306,7 +315,13 @@ func (db *ydbDB) BatchInsert(ctx context.Context, tableName string, keys []strin
 		}
 		ydbRows = append(ydbRows, types.StructValue(fields...))
 	}
-	return db.execQuery(ctx, query.BatchInsert(db.databasePath, tableName, types.ListValue(ydbRows...)))
+	var request query.Request
+	if db.force {
+		request = query.BatchUpsert(db.databasePath, tableName, types.ListValue(ydbRows...))
+	} else {
+		request = query.BatchInsert(db.databasePath, tableName, types.ListValue(ydbRows...))
+	}
+	return db.execQuery(ctx, request)
 }
 
 func (db *ydbDB) Delete(ctx context.Context, tableName string, key string) error {

@@ -106,12 +106,42 @@ func TestBatchInsert(t *testing.T) {
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"DECLARE $values AS List<Struct<key:Utf8,value:Uint64>>;",
-				"UPSERT INTO ycsbtable SELECT * FROM AS_TABLE($values);",
+				"INSERT INTO ycsbtable SELECT * FROM AS_TABLE($values);",
 			},
 		},
 	} {
 		t.Run("", func(t *testing.T) {
 			got := splitAndSimplify(BatchInsert(tt.tablePathPrefix, tt.tableName, types.ListValue(
+				types.StructValue(
+					types.StructFieldValue("key", types.TextValue("")),
+					types.StructFieldValue("value", types.Uint64Value(0)),
+				),
+			)))
+			if !reflect.DeepEqual(got, tt.exp) {
+				t.Errorf("got:\n\n`%v`\n\nwant:\n\n`%v`", got, tt.exp)
+			}
+		})
+	}
+}
+
+func TestBatchUpsert(t *testing.T) {
+	for _, tt := range []struct {
+		tablePathPrefix string
+		tableName       string
+		exp             []string
+	}{
+		{
+			tablePathPrefix: "/local",
+			tableName:       "ycsbtable",
+			exp: []string{
+				"PRAGMA TablePathPrefix(\"/local\");",
+				"DECLARE $values AS List<Struct<key:Utf8,value:Uint64>>;",
+				"UPSERT INTO ycsbtable SELECT * FROM AS_TABLE($values);",
+			},
+		},
+	} {
+		t.Run("", func(t *testing.T) {
+			got := splitAndSimplify(BatchUpsert(tt.tablePathPrefix, tt.tableName, types.ListValue(
 				types.StructValue(
 					types.StructFieldValue("key", types.TextValue("")),
 					types.StructFieldValue("value", types.Uint64Value(0)),
@@ -320,6 +350,36 @@ func TestInsert(t *testing.T) {
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"DECLARE $values AS List<Struct<key:Utf8,value:Uint64>>;",
 				"INSERT INTO ycsbtable SELECT * FROM AS_TABLE($values);",
+			},
+		},
+	} {
+		t.Run("", func(t *testing.T) {
+			got := splitAndSimplify(Insert(tt.tablePathPrefix, tt.tableName, types.ListValue(
+				types.StructValue(
+					types.StructFieldValue("key", types.TextValue("")),
+					types.StructFieldValue("value", types.Uint64Value(0)),
+				),
+			)))
+			if !reflect.DeepEqual(got, tt.exp) {
+				t.Errorf("got:\n\n`%v`\n\nwant:\n\n`%v`", got, tt.exp)
+			}
+		})
+	}
+}
+
+func TestUpsert(t *testing.T) {
+	for _, tt := range []struct {
+		tablePathPrefix string
+		tableName       string
+		exp             []string
+	}{
+		{
+			tablePathPrefix: "/local",
+			tableName:       "ycsbtable",
+			exp: []string{
+				"PRAGMA TablePathPrefix(\"/local\");",
+				"DECLARE $values AS List<Struct<key:Utf8,value:Uint64>>;",
+				"UPSERT INTO ycsbtable SELECT * FROM AS_TABLE($values);",
 			},
 		},
 	} {
