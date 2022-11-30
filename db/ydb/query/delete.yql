@@ -4,4 +4,4 @@ PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
 {{ $declare }};
 {{- end }}
 
-DELETE FROM {{ .TableName }} WHERE YCSB_KEY = $key;
+DELETE FROM {{ .TableName }} WHERE key = $key;

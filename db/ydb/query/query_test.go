@@ -38,7 +38,7 @@ func TestScan(t *testing.T) {
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"DECLARE $key AS Utf8;",
 				"DECLARE $limit AS Uint64;",
-				"SELECT * FROM ycsbtable WHERE YCSB_KEY > $key LIMIT $limit;",
+				"SELECT * FROM ycsbtable WHERE key > $key LIMIT $limit;",
 			},
 		},
 		{
@@ -56,7 +56,7 @@ func TestScan(t *testing.T) {
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"DECLARE $key AS Utf8;",
 				"DECLARE $limit AS Uint64;",
-				"SELECT `COL0`, `COL1`, `COL2`, `COL3`, `COL4`, `COL5` FROM ycsbtable WHERE YCSB_KEY > $key LIMIT $limit;",
+				"SELECT `COL0`, `COL1`, `COL2`, `COL3`, `COL4`, `COL5` FROM ycsbtable WHERE key > $key LIMIT $limit;",
 			},
 		},
 	} {
@@ -81,7 +81,7 @@ func TestBatchDelete(t *testing.T) {
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"DECLARE $keys AS List<Utf8>;",
-				"DELETE FROM ycsbtable WHERE YCSB_KEY IN $keys;",
+				"DELETE FROM ycsbtable WHERE key IN $keys;",
 			},
 		},
 	} {
@@ -168,7 +168,7 @@ func TestBatchRead(t *testing.T) {
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"DECLARE $keys AS List<Utf8>;",
-				"SELECT * FROM ycsbtable WHERE YCSB_KEY IN $keys;",
+				"SELECT * FROM ycsbtable WHERE key IN $keys;",
 			},
 		},
 		{
@@ -185,7 +185,7 @@ func TestBatchRead(t *testing.T) {
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"DECLARE $keys AS List<Utf8>;",
-				"SELECT `COL0`, `COL1`, `COL2`, `COL3`, `COL4`, `COL5` FROM ycsbtable WHERE YCSB_KEY IN $keys;",
+				"SELECT `COL0`, `COL1`, `COL2`, `COL3`, `COL4`, `COL5` FROM ycsbtable WHERE key IN $keys;",
 			},
 		},
 	} {
@@ -242,8 +242,8 @@ func TestCreateTable(t *testing.T) {
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"CREATE TABLE ycsbtable (",
-				"YCSB_KEY Text NOT NULL,",
-				"PRIMARY KEY (YCSB_KEY)",
+				"key Text NOT NULL,",
+				"PRIMARY KEY (key)",
 				");",
 			},
 		},
@@ -254,10 +254,10 @@ func TestCreateTable(t *testing.T) {
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"CREATE TABLE ycsbtable (",
-				"YCSB_KEY Text NOT NULL,",
-				"`FIELD0` Bytes,",
-				"`FIELD1` Bytes,",
-				"PRIMARY KEY (YCSB_KEY)",
+				"key Text NOT NULL,",
+				"`field0` Text,",
+				"`field1` Text,",
+				"PRIMARY KEY (key)",
 				");",
 			},
 		},
@@ -268,13 +268,13 @@ func TestCreateTable(t *testing.T) {
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"CREATE TABLE ycsbtable (",
-				"YCSB_KEY Text NOT NULL,",
-				"`FIELD0` Bytes,",
-				"`FIELD1` Bytes,",
-				"`FIELD2` Bytes,",
-				"`FIELD3` Bytes,",
-				"`FIELD4` Bytes,",
-				"PRIMARY KEY (YCSB_KEY)",
+				"key Text NOT NULL,",
+				"`field0` Text,",
+				"`field1` Text,",
+				"`field2` Text,",
+				"`field3` Text,",
+				"`field4` Text,",
+				"PRIMARY KEY (key)",
 				");",
 			},
 		},
@@ -300,7 +300,7 @@ func TestDelete(t *testing.T) {
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"DECLARE $key AS Utf8;",
-				"DELETE FROM ycsbtable WHERE YCSB_KEY = $key;",
+				"DELETE FROM ycsbtable WHERE key = $key;",
 			},
 		},
 	} {
@@ -411,7 +411,7 @@ func TestRead(t *testing.T) {
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"DECLARE $key AS Utf8;",
-				"SELECT * FROM ycsbtable WHERE YCSB_KEY = $key;",
+				"SELECT * FROM ycsbtable WHERE key = $key;",
 			},
 		},
 		{
@@ -428,7 +428,7 @@ func TestRead(t *testing.T) {
 			exp: []string{
 				"PRAGMA TablePathPrefix(\"/local\");",
 				"DECLARE $key AS Utf8;",
-				"SELECT `COL0`, `COL1`, `COL2`, `COL3`, `COL4`, `COL5` FROM ycsbtable WHERE YCSB_KEY = $key;",
+				"SELECT `COL0`, `COL1`, `COL2`, `COL3`, `COL4`, `COL5` FROM ycsbtable WHERE key = $key;",
 			},
 		},
 	} {
@@ -565,7 +565,7 @@ func Test_renderMemo(t *testing.T) {
 				Declares: asDeclares([]sql.NamedArg{
 					sql.Named("values", types.ListValue(
 						types.StructValue(
-							types.StructFieldValue("key", types.BytesValueFromString("123")),
+							types.StructFieldValue("key", types.TextValue("123")),
 							types.StructFieldValue("value", types.Uint64Value(123)),
 						),
 					)),

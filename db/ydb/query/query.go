@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"text/template"
 
@@ -127,13 +126,6 @@ func Update(tablePathPrefix, tableName string, values types.Value) Request {
 	}
 }
 
-func toUpper(ss []string) []string {
-	for i, s := range ss {
-		ss[i] = strings.ToUpper(s)
-	}
-	return ss
-}
-
 func Scan(tablePathPrefix, tableName string, columns []string, key string, limit uint64) Request {
 	sort.Strings(columns)
 	args := []sql.NamedArg{
@@ -147,7 +139,7 @@ func Scan(tablePathPrefix, tableName string, columns []string, key string, limit
 				TableName:       tableName,
 				Declares:        asDeclares(args),
 			},
-			toUpper(columns),
+			columns,
 		}),
 		args: asInterfaces(args),
 	}
@@ -165,7 +157,7 @@ func BatchRead(tablePathPrefix, tableName string, columns []string, keys []strin
 				TableName:       tableName,
 				Declares:        asDeclares(args),
 			},
-			toUpper(columns),
+			columns,
 		}),
 		args: asInterfaces(args),
 	}
@@ -183,7 +175,7 @@ func Read(tablePathPrefix, tableName string, columns []string, key string) Reque
 				TableName:       tableName,
 				Declares:        asDeclares(args),
 			},
-			toUpper(columns),
+			columns,
 		}),
 		args: asInterfaces(args),
 	}
@@ -321,7 +313,7 @@ type commonDataWithColumns struct {
 func CreateTable(tablePathPrefix, tableName string, fieldsCount int) Request {
 	columns := make([]string, fieldsCount)
 	for i := 0; i < fieldsCount; i++ {
-		columns[i] = "FIELD" + strconv.Itoa(i)
+		columns[i] = "field" + strconv.Itoa(i)
 	}
 	return request{
 		query: render(createTableQuery, commonDataWithColumns{

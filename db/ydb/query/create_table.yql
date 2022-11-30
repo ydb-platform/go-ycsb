@@ -1,10 +1,10 @@
 PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
 
 CREATE TABLE {{ .TableName }} (
-    YCSB_KEY Text NOT NULL,
+    key Text,
 
     {{- range $_, $col := .Columns }}
-    `{{ $col }}` Bytes,
+    `{{ $col }}` Text,
     {{- end }}
-    PRIMARY KEY (YCSB_KEY)
+    PRIMARY KEY (key)
 );

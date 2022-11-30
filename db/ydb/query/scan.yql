@@ -4,4 +4,4 @@ PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
 {{ $declare }};
 {{- end }}
 
-SELECT {{ range $i, $col := .Columns }}{{ if $i }}, {{ end }}`{{ $col }}`{{ else }}*{{ end }} FROM {{ .TableName }} WHERE YCSB_KEY > $key LIMIT $limit;
+SELECT {{ range $i, $col := .Columns }}{{ if $i }}, {{ end }}`{{ $col }}`{{ else }}*{{ end }} FROM {{ .TableName }} WHERE key > $key LIMIT $limit;

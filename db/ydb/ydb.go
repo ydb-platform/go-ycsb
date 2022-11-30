@@ -18,11 +18,9 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
+	"github.com/magiconair/properties"
 	"log"
 	"sort"
-	"strings"
-
-	"github.com/magiconair/properties"
 
 	"github.com/pingcap/go-ycsb/db/ydb/query"
 	"github.com/pingcap/go-ycsb/pkg/prop"
@@ -232,9 +230,9 @@ func (db *ydbDB) queryRows(ctx context.Context, request query.Request) (vs []map
 
 func (db *ydbDB) Update(ctx context.Context, tableName string, key string, row map[string][]byte) error {
 	fields := make([]types.StructValueOption, 0, len(row)+1)
-	fields = append(fields, types.StructFieldValue("YCSB_KEY", types.TextValue(key)))
+	fields = append(fields, types.StructFieldValue("key", types.TextValue(key)))
 	for field, value := range row {
-		fields = append(fields, types.StructFieldValue(strings.ToUpper(field), types.BytesValue(value)))
+		fields = append(fields, types.StructFieldValue(field, types.TextValue(string(value))))
 	}
 	return db.execQuery(ctx, query.Update(db.databasePath, tableName, types.ListValue(types.StructValue(fields...))))
 }
@@ -244,7 +242,6 @@ func (db *ydbDB) BatchUpdate(ctx context.Context, tableName string, keys []strin
 	for _, kv := range values {
 		for k, v := range kv {
 			delete(kv, k)
-			k = strings.ToUpper(k)
 			kv[k] = v
 			columns[k] = struct{}{}
 		}
@@ -258,12 +255,12 @@ func (db *ydbDB) BatchUpdate(ctx context.Context, tableName string, keys []strin
 	for i, key := range keys {
 		row := values[i]
 		fields := make([]types.StructValueOption, 0, len(cols)+1)
-		fields = append(fields, types.StructFieldValue("YCSB_KEY", types.TextValue(key)))
+		fields = append(fields, types.StructFieldValue("key", types.TextValue(key)))
 		for _, column := range cols {
 			if value, has := row[column]; has {
-				fields = append(fields, types.StructFieldValue(column, types.NullableBytesValue(&value)))
+				fields = append(fields, types.StructFieldValue(column, types.TextValue(string(value))))
 			} else {
-				fields = append(fields, types.StructFieldValue(column, types.NullableBytesValue(nil)))
+				fields = append(fields, types.StructFieldValue(column, types.NullableTextValue(nil)))
 			}
 		}
 		ydbRows = append(ydbRows, types.StructValue(fields...))
@@ -273,9 +270,9 @@ func (db *ydbDB) BatchUpdate(ctx context.Context, tableName string, keys []strin
 
 func (db *ydbDB) Insert(ctx context.Context, tableName string, key string, row map[string][]byte) error {
 	fields := make([]types.StructValueOption, 0, len(row)+1)
-	fields = append(fields, types.StructFieldValue("YCSB_KEY", types.TextValue(key)))
+	fields = append(fields, types.StructFieldValue("key", types.TextValue(key)))
 	for field, value := range row {
-		fields = append(fields, types.StructFieldValue(strings.ToUpper(field), types.BytesValue(value)))
+		fields = append(fields, types.StructFieldValue(field, types.TextValue(string(value))))
 	}
 	var request query.Request
 	if db.force {
@@ -291,7 +288,6 @@ func (db *ydbDB) BatchInsert(ctx context.Context, tableName string, keys []strin
 	for _, kv := range values {
 		for k, v := range kv {
 			delete(kv, k)
-			k = strings.ToUpper(k)
 			kv[k] = v
 			columns[k] = struct{}{}
 		}
@@ -305,12 +301,12 @@ func (db *ydbDB) BatchInsert(ctx context.Context, tableName string, keys []strin
 	for i, key := range keys {
 		row := values[i]
 		fields := make([]types.StructValueOption, 0, len(cols)+1)
-		fields = append(fields, types.StructFieldValue("YCSB_KEY", types.TextValue(key)))
+		fields = append(fields, types.StructFieldValue("key", types.TextValue(key)))
 		for _, column := range cols {
 			if value, has := row[column]; has {
-				fields = append(fields, types.StructFieldValue(column, types.NullableBytesValue(&value)))
+				fields = append(fields, types.StructFieldValue(column, types.TextValue(string(value))))
 			} else {
-				fields = append(fields, types.StructFieldValue(column, types.NullableBytesValue(nil)))
+				fields = append(fields, types.StructFieldValue(column, types.NullableTextValue(nil)))
 			}
 		}
 		ydbRows = append(ydbRows, types.StructValue(fields...))
