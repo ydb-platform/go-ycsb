@@ -48,8 +48,6 @@ import (
 	_ "github.com/pingcap/go-ycsb/db/pg"
 	// Register Aerospike database
 	_ "github.com/pingcap/go-ycsb/db/aerospike"
-	// Register Badger database
-	_ "github.com/pingcap/go-ycsb/db/badger"
 	// Register FoundationDB database
 	_ "github.com/pingcap/go-ycsb/db/foundationdb"
 	// Register RocksDB database
@@ -58,8 +56,6 @@ import (
 	_ "github.com/pingcap/go-ycsb/db/spanner"
 	// Register pegasus database
 	_ "github.com/pingcap/go-ycsb/db/pegasus"
-	// Register sqlite database
-	_ "github.com/pingcap/go-ycsb/db/sqlite"
 	// Register cassandra database
 	_ "github.com/pingcap/go-ycsb/db/cassandra"
 	// Register mongodb database
