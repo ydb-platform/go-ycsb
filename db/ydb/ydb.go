@@ -37,9 +37,8 @@ import (
 
 // ydb properties
 const (
-	ydbDSN     = "ydb.dsn"
-	ydbExplain = "ydb.explain"
-	ydbForce   = "ydb.force"
+	ydbDSN   = "ydb.dsn"
+	ydbForce = "ydb.force"
 )
 
 type ydbCreator struct {
@@ -49,7 +48,6 @@ type ydbDB struct {
 	p       *properties.Properties
 	db      *sql.DB
 	verbose bool
-	explain bool
 	force   bool
 
 	databasePath string
@@ -97,7 +95,6 @@ func (c ydbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 		return nil, err
 	}
 
-	d.explain = p.GetBool(ydbExplain, false)
 	d.force = p.GetBool(ydbForce, true)
 
 	return d, nil
@@ -158,18 +155,8 @@ func (db *ydbDB) execQuery(ctx context.Context, request query.Request) (err erro
 		fmt.Printf("%s %v\n", request.Query(), request.Args())
 	}
 	err = retry.Do(ctx, db.db, func(ctx context.Context, cc *sql.Conn) error {
-		if db.explain {
-			row := cc.QueryRowContext(ydb.WithQueryMode(ctx, ydb.ExplainQueryMode), request.Query(), request.Args()...)
-			var plan, ast string
-			if err = row.Scan(&ast, &plan); err != nil {
-				return err
-			}
-			fmt.Printf("EXPLAIN QUERY %q: %s", request.Query(), plan)
-			return nil
-		} else {
-			_, err = cc.ExecContext(ctx, request.Query(), request.Args()...)
-			return err
-		}
+		_, err = cc.ExecContext(ctx, request.Query(), request.Args()...)
+		return err
 	})
 	if err != nil {
 		log.Println(err)
@@ -182,47 +169,36 @@ func (db *ydbDB) queryRows(ctx context.Context, request query.Request) (vs []map
 		fmt.Printf("%s %v\n", request.Query(), request.Args())
 	}
 	err := retry.Do(ctx, db.db, func(ctx context.Context, cc *sql.Conn) error {
-		if db.explain {
-			ctx = ydb.WithQueryMode(ctx, ydb.ExplainQueryMode)
-			row := cc.QueryRowContext(ydb.WithQueryMode(ctx, ydb.ExplainQueryMode), request.Query(), request.Args()...)
-			var plan, ast string
-			if err := row.Scan(&ast, &plan); err != nil {
-				return err
-			}
-			fmt.Printf("EXPLAIN QUERY %q: %s", request.Query(), plan)
-			return nil
-		} else {
-			rows, err := cc.QueryContext(ctx, request.Query(), request.Args()...)
-			if err != nil {
-				return err
-			}
-			defer func() {
-				_ = rows.Close()
-			}()
-			cols, err := rows.Columns()
-			if err != nil {
-				return err
-			}
-			vs = make([]map[string][]byte, 0)
-			for rows.Next() {
-				m := make(map[string][]byte, len(cols))
-				dest := make([]interface{}, len(cols))
-				for i := 0; i < len(cols); i++ {
-					v := new([]byte)
-					dest[i] = v
-				}
-				if err = rows.Scan(dest...); err != nil {
-					return err
-				}
-
-				for i, v := range dest {
-					m[cols[i]] = *v.(*[]byte)
-				}
-
-				vs = append(vs, m)
-			}
-			return rows.Err()
+		rows, err := cc.QueryContext(ctx, request.Query(), request.Args()...)
+		if err != nil {
+			return err
 		}
+		defer func() {
+			_ = rows.Close()
+		}()
+		cols, err := rows.Columns()
+		if err != nil {
+			return err
+		}
+		vs = make([]map[string][]byte, 0)
+		for rows.Next() {
+			m := make(map[string][]byte, len(cols))
+			dest := make([]interface{}, len(cols))
+			for i := 0; i < len(cols); i++ {
+				v := new([]byte)
+				dest[i] = v
+			}
+			if err = rows.Scan(dest...); err != nil {
+				return err
+			}
+
+			for i, v := range dest {
+				m[cols[i]] = *v.(*[]byte)
+			}
+
+			vs = append(vs, m)
+		}
+		return rows.Err()
 	})
 	if err != nil {
 		log.Println(err)
