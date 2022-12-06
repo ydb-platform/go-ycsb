@@ -1,3 +1,0 @@
-PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
-
-DROP TABLE {{ .TableName }};

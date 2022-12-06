@@ -1,7 +1,0 @@
-PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
-
-{{ range $_, $declare := .Declares }}
-{{ $declare }};
-{{- end }}
-
-DELETE FROM {{ .TableName }} WHERE YCSB_KEY = $key;

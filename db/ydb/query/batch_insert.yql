@@ -1,7 +1,0 @@
-PRAGMA TablePathPrefix("{{ .TablePathPrefix }}");
-
-{{ range $_, $declare := .Declares }}
-{{ $declare }};
-{{- end }}
-
-{{ .Operation }} INTO {{ .TableName }} SELECT * FROM AS_TABLE($values);
