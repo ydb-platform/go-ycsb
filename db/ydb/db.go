@@ -256,14 +256,18 @@ func (db *ydbDB) queryRows(ctx context.Context, query string, count int, args ..
 }
 
 func (db *ydbDB) Read(ctx context.Context, table string, id string, fields []string) (map[string][]byte, error) {
-	query := "DECLARE $id AS Text;"
-	if len(fields) == 0 {
-		query += fmt.Sprintf(`SELECT * FROM %s WHERE id = $id`, table)
-	} else {
-		query += fmt.Sprintf(`SELECT %s FROM %s WHERE id = $id`, strings.Join(fields, ","), table)
+	fieldsString := "*"
+	if len(fields) > 0 {
+		fieldsString = strings.Join(fields, ",")
 	}
 
-	rows, err := db.queryRows(ctx, query, 1, sql.Named("id", id))
+	rows, err := db.queryRows(ctx, fmt.Sprintf(`
+		DECLARE $id AS Text;
+
+		SELECT %s 
+		FROM %s 
+		WHERE id = $id;
+	`, fieldsString, table), 1, sql.Named("id", id))
 	if err != nil {
 		return nil, err
 	}
@@ -276,14 +280,16 @@ func (db *ydbDB) Read(ctx context.Context, table string, id string, fields []str
 }
 
 func (db *ydbDB) Scan(ctx context.Context, table string, startKey string, count int, fields []string) ([]map[string][]byte, error) {
-	query := "DECLARE $id AS Text; DECLARE $limit AS Uint64;"
-	if len(fields) == 0 {
-		query += fmt.Sprintf(`SELECT * FROM %s WHERE id >= $id LIMIT $limit`, table)
-	} else {
-		query += fmt.Sprintf(`SELECT %s FROM %s WHERE id >= $id LIMIT $limit`, strings.Join(fields, ","), table)
+	fieldsString := "*"
+	if len(fields) > 0 {
+		fieldsString = strings.Join(fields, ",")
 	}
 
-	rows, err := db.queryRows(ctx, query, count, sql.Named("id", startKey), sql.Named("limit", count))
+	rows, err := db.queryRows(ctx, fmt.Sprintf(`
+		DECLARE $id AS Text;
+		DECLARE $limit AS Uint64;
+		SELECT %s FROM %s WHERE id >= $id LIMIT $limit;
+	`, fieldsString, table), count, sql.Named("id", startKey), sql.Named("limit", count))
 	if err != nil {
 		return nil, err
 	}
@@ -311,15 +317,16 @@ func (db *ydbDB) insertOrUpsert(ctx context.Context, op string, table string, id
 		db.buildersPool.Put(builder)
 	}()
 
-	builder.WriteString("DECLARE $id AS Text; ")
+	builder.WriteString("DECLARE $id AS Text;\n")
 	pairs := util.NewFieldPairs(values)
 	for _, p := range pairs {
 		args = append(args, sql.Named(p.Field, p.Value))
 		builder.WriteString("DECLARE $")
 		builder.WriteString(p.Field)
-		builder.WriteString(" AS Bytes; ")
+		builder.WriteString(" AS Bytes;\n")
 	}
 
+	builder.WriteString("\n")
 	builder.WriteString(op)
 	builder.WriteString(" INTO ")
 	builder.WriteString(table)
@@ -328,13 +335,13 @@ func (db *ydbDB) insertOrUpsert(ctx context.Context, op string, table string, id
 		builder.WriteString(" ,")
 		builder.WriteString(p.Field)
 	}
-	builder.WriteString(") VALUES ($id")
+	builder.WriteString(")\nVALUES ($id")
 
 	for _, p := range pairs {
 		builder.WriteString(fmt.Sprintf(" ,$%s", p.Field))
 	}
 
-	builder.WriteString(")")
+	builder.WriteString(");")
 
 	return db.execQuery(ctx, builder.String(), args...)
 }
