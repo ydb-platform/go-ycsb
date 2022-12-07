@@ -27,7 +27,7 @@ import (
 	"github.com/magiconair/properties"
 
 	// ydb package
-	_ "github.com/ydb-platform/ydb-go-sdk/v3"
+	"github.com/ydb-platform/ydb-go-sdk/v3"
 	"github.com/ydb-platform/ydb-go-sdk/v3/retry"
 
 	"github.com/pingcap/go-ycsb/pkg/ycsb"
@@ -76,10 +76,10 @@ type ydbDB struct {
 	buildersPool buildersPool
 }
 
-func calculateAvgRowSize(p *properties.Properties) int64 {
-	fieldCount := p.GetInt64(prop.FieldCount, prop.FieldCountDefault)
-	fieldLength := p.GetInt64(prop.FieldLength, prop.FieldLengthDefault)
-	fieldLengthDistribution := p.GetString(prop.FieldLengthDistribution, prop.FieldLengthDistributionDefault)
+func (db *ydbDB) calculateAvgRowSize() int64 {
+	fieldCount := db.p.GetInt64(prop.FieldCount, prop.FieldCountDefault)
+	fieldLength := db.p.GetInt64(prop.FieldLength, prop.FieldLengthDefault)
+	fieldLengthDistribution := db.p.GetString(prop.FieldLengthDistribution, prop.FieldLengthDistributionDefault)
 
 	avgFieldLength := int64(0)
 	switch fieldLengthDistribution {
@@ -119,32 +119,26 @@ func (c ydbCreator) Create(p *properties.Properties) (ycsb.DB, error) {
 	d.forceUpsert = p.GetBool(ydbForceUpsert, false)
 	d.db = db
 
-	if err = createTable(p, dsn); err != nil {
+	if err = d.createTable(); err != nil {
 		return nil, err
 	}
 
 	return d, nil
 }
 
-func createTable(p *properties.Properties, dsn string) error {
-	db, err := sql.Open("ydb", dsn+"?query_mode=scripting")
-	if err != nil {
-		fmt.Printf("open ydb (in scripting mode) failed %v", err)
-		return err
-	}
-	defer func() {
-		_ = db.Close()
-	}()
+func (db *ydbDB) createTable() error {
+	ctx := ydb.WithQueryMode(context.Background(), ydb.SchemeQueryMode)
 
-	ctx := context.Background()
+	tableName := db.p.GetString(prop.TableName, prop.TableNameDefault)
 
-	tableName := p.GetString(prop.TableName, prop.TableNameDefault)
-
-	if p.GetBool(prop.DropData, prop.DropDataDefault) {
-		_, _ = db.ExecContext(ctx, fmt.Sprintf("DROP TABLE %s", tableName))
+	if db.p.GetBool(prop.DropData, prop.DropDataDefault) {
+		_ = retry.Do(ctx, db.db, func(ctx context.Context, cc *sql.Conn) error {
+			_, err := db.db.ExecContext(ctx, fmt.Sprintf("DROP TABLE %s", tableName))
+			return err
+		}, retry.WithDoRetryOptions(retry.WithIdempotent(true)))
 	}
 
-	fieldCount := p.GetInt64(prop.FieldCount, prop.FieldCountDefault)
+	fieldCount := db.p.GetInt64(prop.FieldCount, prop.FieldCountDefault)
 
 	var builder strings.Builder
 
@@ -157,19 +151,19 @@ func createTable(p *properties.Properties, dsn string) error {
 	builder.WriteString(", PRIMARY KEY (id)")
 	builder.WriteString(")")
 
-	if p.GetBool(ydbAutoPartitioning, true) {
-		avgRowSize := calculateAvgRowSize(p)
-		recordCount := p.GetInt64(prop.RecordCount, prop.RecordCountDefault)
-		maxPartSizeMB := p.GetInt64(ydbMaxPartSizeMb, maxPartitionsSize)
-		maxParts := p.GetInt64(ydbMaxPartCount, maxPartitionsCount)
+	if db.p.GetBool(ydbAutoPartitioning, true) {
+		avgRowSize := db.calculateAvgRowSize()
+		recordCount := db.p.GetInt64(prop.RecordCount, prop.RecordCountDefault)
+		maxPartSizeMB := db.p.GetInt64(ydbMaxPartSizeMb, maxPartitionsSize)
+		maxParts := db.p.GetInt64(ydbMaxPartCount, maxPartitionsCount)
 		minParts := maxParts
 
 		approximateDataSize := avgRowSize * recordCount
 		avgPartSizeMB := int64(math.Max(float64(approximateDataSize)/float64(maxParts)/1000000, 1))
 		partSizeMB := int64(math.Min(float64(avgPartSizeMB), float64(maxPartSizeMB)))
 
-		splitByLoad := p.GetBool(ydbSplitByLoad, true)
-		splitBySize := p.GetBool(ydbSplitBySize, true)
+		splitByLoad := db.p.GetBool(ydbSplitByLoad, true)
+		splitBySize := db.p.GetBool(ydbSplitBySize, true)
 		fmt.Printf("After partitioning for %d records with avg row size %d: "+
 			"minParts=%d, maxParts=%d, partSize=%d MB, splitByLoad=%t, splitBySize=%t\n",
 			recordCount, avgRowSize, minParts, maxParts, partSizeMB, splitByLoad, splitBySize,
@@ -190,8 +184,10 @@ func createTable(p *properties.Properties, dsn string) error {
 
 	builder.WriteString(";")
 
-	_, err = db.ExecContext(ctx, builder.String())
-	return err
+	return retry.Do(ctx, db.db, func(ctx context.Context, cc *sql.Conn) error {
+		_, err := db.db.ExecContext(ctx, builder.String())
+		return err
+	}, retry.WithDoRetryOptions(retry.WithIdempotent(true)))
 }
 
 func (db *ydbDB) Close() error {
@@ -217,8 +213,7 @@ func (db *ydbDB) queryRows(ctx context.Context, query string, count int, args ..
 	vs := make([]map[string][]byte, 0, count)
 
 	err := retry.Do(ctx, db.db, func(ctx context.Context, cc *sql.Conn) error {
-		// clean vs after last usage
-		vs = make([]map[string][]byte, 0, count)
+		vs = vs[:0]
 
 		rows, err := cc.QueryContext(ctx, query, args...)
 		if err != nil {
@@ -256,18 +251,25 @@ func (db *ydbDB) queryRows(ctx context.Context, query string, count int, args ..
 }
 
 func (db *ydbDB) Read(ctx context.Context, table string, id string, fields []string) (map[string][]byte, error) {
-	fieldsString := "*"
-	if len(fields) > 0 {
-		fieldsString = strings.Join(fields, ",")
+	builder := db.buildersPool.Get()
+	defer db.buildersPool.Put(builder)
+
+	builder.WriteString("DECLARE $id AS Text;\n\nSELECT ")
+	if len(fields) == 0 {
+		builder.WriteByte('*')
+	} else {
+		for i, field := range fields {
+			if i != 0 {
+				builder.WriteByte(',')
+			}
+			builder.WriteString(field)
+		}
 	}
+	builder.WriteString("\nFROM ")
+	builder.WriteString(table)
+	builder.WriteString("\nWHERE id = $id;")
 
-	rows, err := db.queryRows(ctx, fmt.Sprintf(`
-		DECLARE $id AS Text;
-
-		SELECT %s 
-		FROM %s 
-		WHERE id = $id;
-	`, fieldsString, table), 1, sql.Named("id", id))
+	rows, err := db.queryRows(ctx, builder.String(), 1, sql.Named("id", id))
 	if err != nil {
 		return nil, err
 	}
@@ -280,16 +282,25 @@ func (db *ydbDB) Read(ctx context.Context, table string, id string, fields []str
 }
 
 func (db *ydbDB) Scan(ctx context.Context, table string, startKey string, count int, fields []string) ([]map[string][]byte, error) {
-	fieldsString := "*"
-	if len(fields) > 0 {
-		fieldsString = strings.Join(fields, ",")
-	}
+	builder := db.buildersPool.Get()
+	defer db.buildersPool.Put(builder)
 
-	rows, err := db.queryRows(ctx, fmt.Sprintf(`
-		DECLARE $id AS Text;
-		DECLARE $limit AS Uint64;
-		SELECT %s FROM %s WHERE id >= $id LIMIT $limit;
-	`, fieldsString, table), count, sql.Named("id", startKey), sql.Named("limit", count))
+	builder.WriteString("DECLARE $id AS Text;\nDECLARE $limit AS Uint64;\n\nSELECT ")
+	if len(fields) == 0 {
+		builder.WriteByte('*')
+	} else {
+		for i, field := range fields {
+			if i != 0 {
+				builder.WriteByte(',')
+			}
+			builder.WriteString(field)
+		}
+	}
+	builder.WriteString("\nFROM ")
+	builder.WriteString(table)
+	builder.WriteString("\nWHERE id >= $id LIMIT $limit;")
+
+	rows, err := db.queryRows(ctx, builder.String(), count, sql.Named("id", startKey), sql.Named("limit", count))
 	if err != nil {
 		return nil, err
 	}
@@ -313,9 +324,7 @@ func (db *ydbDB) insertOrUpsert(ctx context.Context, op string, table string, id
 	args = append(args, sql.Named("id", id))
 
 	builder := db.buildersPool.Get()
-	defer func() {
-		db.buildersPool.Put(builder)
-	}()
+	defer db.buildersPool.Put(builder)
 
 	builder.WriteString("DECLARE $id AS Text;\n")
 	pairs := util.NewFieldPairs(values)
